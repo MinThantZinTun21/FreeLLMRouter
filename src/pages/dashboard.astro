@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/base.astro';
+import { DashboardPage } from '../components/auth/DashboardPage';
+---
+
+<Layout title="Dashboard - Free LLM Router" description="Manage your API keys" noindex={true}>
+  <div class="container mx-auto max-w-4xl px-4 py-8">
+    <DashboardPage client:load />
+  </div>
+</Layout>

@@ -1,0 +1,577 @@
+---
+import Layout from '../../layouts/base.astro';
+import DataAttributionFooter from '../../components/DataAttributionFooter.astro';
+import { access } from '@/lib/runtime-access';
+import {
+  getModelById,
+  getRelatedModels,
+  getSimilarModels,
+  getModelFeedbackById,
+  getModelAvailabilityById,
+} from '@/services/openrouter';
+import { AvailabilityMatrix } from '@/components/model-availability/AvailabilityMatrix';
+import { generateModelSchema, generateBreadcrumbSchema, generateFAQSchema } from '@/lib/seo';
+import { modelDetailPath, getProviderFromId, providerDetailPath } from '@/lib/model-urls';
+import { ModelDetailChart } from '@/components/model-health/ModelDetailChart';
+
+const slug = Astro.params.slug;
+if (!slug) {
+  return Astro.redirect('/models');
+}
+
+const modelId = Array.isArray(slug) ? slug.join('/') : slug;
+const rt = access(Astro.locals);
+const appDb = rt.db('app');
+if (!appDb) throw new Error('Missing env: DATABASE_URL');
+const adminDb = rt.db('admin');
+if (!adminDb) throw new Error('Missing env: DATABASE_URL_ADMIN');
+
+const model = await getModelById(appDb, modelId);
+if (!model) {
+  return new Response(null, { status: 404, statusText: 'Model not found' });
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const [
+  feedback1h,
+  feedback6h,
+  feedback24h,
+  feedback7d,
+  feedback30d,
+  relatedModels,
+  similarModels,
+  availabilityData,
+] = await Promise.all([
+  getModelFeedbackById(appDb, modelId, 1 * HOUR_MS),
+  getModelFeedbackById(appDb, modelId, 6 * HOUR_MS),
+  getModelFeedbackById(appDb, modelId, 24 * HOUR_MS),
+  getModelFeedbackById(appDb, modelId, 7 * 24 * HOUR_MS),
+  getModelFeedbackById(appDb, modelId, 30 * 24 * HOUR_MS),
+  getRelatedModels(appDb, model),
+  getSimilarModels(appDb, model),
+  getModelAvailabilityById(adminDb, modelId, 90),
+]);
+
+const hasFeedback = feedback1h || feedback6h || feedback24h || feedback7d || feedback30d;
+
+const provider = getProviderFromId(model.id);
+const providerCapitalized = provider.charAt(0).toUpperCase() + provider.slice(1);
+
+// Capability badges
+const capabilities: string[] = [];
+if (model.inputModalities?.includes('image')) capabilities.push('Vision');
+if (model.supportedParameters?.includes('tools')) capabilities.push('Tools');
+if (
+  model.supportedParameters?.includes('reasoning') ||
+  model.supportedParameters?.includes('include_reasoning')
+) {
+  capabilities.push('Reasoning');
+}
+if ((model.contextLength ?? 0) >= 100000) capabilities.push('Long Context');
+
+const hasAvailability = Object.keys(availabilityData.availability).length > 0;
+const latestTrackedDate = availabilityData.dates[availabilityData.dates.length - 1] ?? null;
+const latestAvailableSnapshotDate = hasAvailability
+  ? Object.keys(availabilityData.availability).sort().slice(-1)[0]
+  : null;
+const isCurrentlyFree = latestTrackedDate
+  ? availabilityData.availability[latestTrackedDate] === true
+  : model.isActive !== false;
+
+// SEO
+const title = isCurrentlyFree
+  ? `${model.name} (${providerCapitalized}) - Free on OpenRouter`
+  : `${model.name} (${providerCapitalized}) - No Longer Free on OpenRouter`;
+const capList = capabilities.length > 0 ? ` Supports: ${capabilities.join(', ')}.` : '';
+const ctxDesc = model.contextLength
+  ? `${Math.round(model.contextLength / 1000)}K token context.`
+  : '';
+const description = isCurrentlyFree
+  ? `Use ${model.name} for free on OpenRouter. ${ctxDesc}${capList} Route via Free LLM Router API.`
+  : `${model.name} is no longer available as a free model on OpenRouter. ${ctxDesc}${capList}`;
+
+const breadcrumbItems = [
+  { name: 'Home', url: '/' },
+  { name: 'Models', url: '/models' },
+  { name: model.name, url: modelDetailPath(model.id) },
+];
+
+// Auto-generated FAQ
+const faqs: { question: string; answer: string }[] = [
+  isCurrentlyFree
+    ? {
+        question: `Is ${model.name} free to use?`,
+        answer: `Yes, ${model.name} is completely free to use through OpenRouter. You can access it via the Free LLM Router API at no cost.`,
+      }
+    : {
+        question: `Is ${model.name} still free to use?`,
+        answer: `${model.name} is no longer available as a free model on OpenRouter.`,
+      },
+];
+
+if (model.contextLength) {
+  const ctxFormatted =
+    model.contextLength >= 1_000_000
+      ? `${(model.contextLength / 1_000_000).toFixed(1)}M`
+      : model.contextLength >= 1_000
+        ? `${Math.round(model.contextLength / 1_000)}K`
+        : model.contextLength.toString();
+  faqs.push({
+    question: `What is the context window for ${model.name}?`,
+    answer: `${model.name} supports a context window of ${ctxFormatted} tokens (${model.contextLength.toLocaleString()} tokens).`,
+  });
+}
+
+if (model.maxCompletionTokens) {
+  const outFormatted =
+    model.maxCompletionTokens >= 1_000_000
+      ? `${(model.maxCompletionTokens / 1_000_000).toFixed(1)}M`
+      : model.maxCompletionTokens >= 1_000
+        ? `${Math.round(model.maxCompletionTokens / 1_000)}K`
+        : model.maxCompletionTokens.toString();
+  faqs.push({
+    question: `What is the maximum output length for ${model.name}?`,
+    answer: `${model.name} can generate up to ${outFormatted} tokens (${model.maxCompletionTokens.toLocaleString()} tokens) per response.`,
+  });
+}
+
+if (model.inputModalities?.includes('image')) {
+  faqs.push({
+    question: `Does ${model.name} support vision and image inputs?`,
+    answer: `Yes, ${model.name} supports image inputs, allowing you to analyze and discuss images alongside text.`,
+  });
+}
+
+if (model.supportedParameters?.includes('tools')) {
+  faqs.push({
+    question: `Does ${model.name} support function calling (tools)?`,
+    answer: `Yes, ${model.name} supports function calling / tool use, enabling it to interact with external APIs and services.`,
+  });
+}
+
+if (
+  model.supportedParameters?.includes('reasoning') ||
+  model.supportedParameters?.includes('include_reasoning')
+) {
+  faqs.push({
+    question: `Does ${model.name} support reasoning?`,
+    answer: `Yes, ${model.name} supports reasoning capabilities, allowing it to show its step-by-step thought process.`,
+  });
+}
+
+const jsonLd = [
+  generateModelSchema(model),
+  generateBreadcrumbSchema(breadcrumbItems),
+  generateFAQSchema(faqs),
+];
+
+function errorRateColor(rate: number | undefined): string {
+  if (rate === undefined) return 'text-muted-foreground';
+  if (rate > 20) return 'text-destructive';
+  if (rate > 10) return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-green-600 dark:text-green-400';
+}
+
+function formatTokens(count: number | null): string {
+  if (!count) return '-';
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(0)}K`;
+  return count.toString();
+}
+
+const isNew = model.createdAt
+  ? new Date(model.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  : false;
+const isInactive = !isCurrentlyFree;
+const lastSeenDate = latestAvailableSnapshotDate
+  ? new Date(`${latestAvailableSnapshotDate}T00:00:00Z`)
+  : model.lastSeenAt;
+const lastSeenLabel = lastSeenDate
+  ? new Date(lastSeenDate).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  : null;
+
+const openRouterUrl = `https://openrouter.ai/${model.id}`;
+
+// Availability — shape into AvailabilityData[] for the AvailabilityMatrix component
+const availableDays = Object.values(availabilityData.availability).filter(Boolean).length;
+const totalTrackedDays = Object.keys(availabilityData.availability).length;
+const availabilityModels = hasAvailability
+  ? [
+      {
+        modelId: model.id,
+        modelName: model.name,
+        isActive: model.isActive,
+        modality: model.modality,
+        inputModalities: model.inputModalities,
+        outputModalities: model.outputModalities,
+        supportedParameters: model.supportedParameters,
+        contextLength: model.contextLength,
+        maxCompletionTokens: model.maxCompletionTokens,
+        availability: availabilityData.availability,
+      },
+    ]
+  : [];
+---
+
+<Layout title={title} description={description} jsonLd={jsonLd} url={modelDetailPath(model.id)}>
+  <div class="container mx-auto max-w-3xl px-4 py-8">
+    <!-- Breadcrumbs -->
+    <nav class="mb-6 text-sm text-muted-foreground" aria-label="Breadcrumb">
+      <ol class="flex items-center gap-1.5">
+        <li><a href="/" class="hover:text-foreground transition-colors">Home</a></li>
+        <li class="text-muted-foreground/50">/</li>
+        <li><a href="/models" class="hover:text-foreground transition-colors">Models</a></li>
+        <li class="text-muted-foreground/50">/</li>
+        <li class="text-foreground font-medium truncate">{model.name}</li>
+      </ol>
+    </nav>
+
+    <!-- Header -->
+    <header class="mb-8">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex items-start gap-4 min-w-0">
+          <img
+            src={`https://models.dev/logos/${provider}.svg`}
+            alt={provider}
+            class="h-10 w-10 object-contain opacity-70 dark:invert dark:opacity-80 mt-1 shrink-0"
+            onerror="this.style.display='none'"
+          />
+          <div class="min-w-0">
+            <h1 class="text-2xl font-bold tracking-tight text-foreground">
+              {model.name}
+            </h1>
+            <p class="text-sm text-muted-foreground mt-1">
+              by <a
+                href={providerDetailPath(provider)}
+                class="capitalize hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                >{provider}</a
+              >
+              {
+                isNew && (
+                  <span class="ml-2 inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                    New
+                  </span>
+                )
+              }
+              {
+                isInactive && (
+                  <span class="ml-2 inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    No longer free
+                  </span>
+                )
+              }
+            </p>
+            {
+              isInactive && (
+                <p class="text-xs text-muted-foreground mt-2">
+                  Last seen as free: {lastSeenLabel ?? 'unknown'}
+                </p>
+              )
+            }
+          </div>
+        </div>
+        <a
+          href={openRouterUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 mt-1"
+        >
+          OpenRouter
+          <svg
+            class="h-3.5 w-3.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M7 17L17 7"></path><path d="M7 7h10v10"></path>
+          </svg>
+        </a>
+      </div>
+
+      {
+        capabilities.length > 0 && (
+          <div class="flex flex-wrap gap-1.5 mt-4">
+            {capabilities.map((cap) => (
+              <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                {cap}
+              </span>
+            ))}
+          </div>
+        )
+      }
+    </header>
+
+    <!-- Availability -->
+    {
+      hasAvailability && (
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-3">Availability</h2>
+          <p class="text-xs text-muted-foreground mb-3">
+            Available {availableDays} of {totalTrackedDays} tracked days. Daily snapshots show
+            whether this model was accessible as a free model on OpenRouter.
+          </p>
+          <AvailabilityMatrix
+            client:load
+            models={availabilityModels}
+            dates={availabilityData.dates}
+            showStatusFilter={false}
+            showModelCount={false}
+          />
+        </section>
+      )
+    }
+
+    <!-- Description -->
+    {
+      model.description && (
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-2">About</h2>
+          <p class="text-muted-foreground leading-relaxed">{model.description}</p>
+        </section>
+      )
+    }
+
+    <!-- Capabilities -->
+    <section class="mb-8">
+      <h2 class="text-lg font-semibold mb-3">Specifications</h2>
+      <div class="rounded-xl border bg-card divide-y overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3">
+          <span class="text-sm text-muted-foreground">Context Length</span>
+          <span class="text-sm font-mono font-medium">{formatTokens(model.contextLength)}</span>
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <span class="text-sm text-muted-foreground">Max Output Tokens</span>
+          <span class="text-sm font-mono font-medium"
+            >{formatTokens(model.maxCompletionTokens)}</span
+          >
+        </div>
+        <div class="flex items-center justify-between px-4 py-3">
+          <span class="text-sm text-muted-foreground">Modality</span>
+          <span class="text-sm font-mono font-medium">{model.modality ?? '-'}</span>
+        </div>
+        {
+          model.inputModalities && model.inputModalities.length > 0 && (
+            <div class="flex items-center justify-between px-4 py-3">
+              <span class="text-sm text-muted-foreground">Input</span>
+              <span class="text-sm font-medium">{model.inputModalities.join(', ')}</span>
+            </div>
+          )
+        }
+        {
+          model.outputModalities && model.outputModalities.length > 0 && (
+            <div class="flex items-center justify-between px-4 py-3">
+              <span class="text-sm text-muted-foreground">Output</span>
+              <span class="text-sm font-medium">{model.outputModalities.join(', ')}</span>
+            </div>
+          )
+        }
+        {
+          model.supportedParameters && model.supportedParameters.length > 0 && (
+            <div class="flex items-center justify-between px-4 py-3">
+              <span class="text-sm text-muted-foreground">Supported Parameters</span>
+              <span class="text-sm font-medium">{model.supportedParameters.join(', ')}</span>
+            </div>
+          )
+        }
+        <div class="flex items-center justify-between px-4 py-3">
+          <span class="text-sm text-muted-foreground">Content Moderation</span>
+          <span class="text-sm font-medium">{model.isModerated ? 'Yes' : 'No'}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reliability -->
+    <section class="mb-8">
+      <h2 class="text-lg font-semibold mb-3">Error Rate</h2>
+      <p class="text-xs text-muted-foreground mb-3 leading-relaxed">
+        Based on feedback reported by Free LLM Router users. Error rate reflects the percentage of
+        requests that encountered issues such as rate limiting, unavailability, or errors.
+        <a href="/docs" class="underline hover:text-foreground transition-colors">Learn more</a>.
+      </p>
+
+      <!-- Interactive chart -->
+      <div class="mb-4">
+        <ModelDetailChart client:load modelId={model.id} />
+      </div>
+
+      <!-- Static error rates table (SEO-friendly) -->
+      {
+        hasFeedback && (
+          <div class="rounded-xl border bg-card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b">
+                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Model</th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground">1h</th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground">6h</th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground">24h</th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground">7d</th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground">30d</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  <tr>
+                    <td class="px-4 py-3 font-medium text-foreground truncate max-w-[200px]">
+                      {model.name}
+                    </td>
+                    <td
+                      class:list={[
+                        'px-4 py-3 text-right font-mono',
+                        errorRateColor(feedback1h?.errorRate),
+                      ]}
+                    >
+                      {feedback1h ? `${feedback1h.errorRate.toFixed(1)}%` : '-'}
+                    </td>
+                    <td
+                      class:list={[
+                        'px-4 py-3 text-right font-mono',
+                        errorRateColor(feedback6h?.errorRate),
+                      ]}
+                    >
+                      {feedback6h ? `${feedback6h.errorRate.toFixed(1)}%` : '-'}
+                    </td>
+                    <td
+                      class:list={[
+                        'px-4 py-3 text-right font-mono',
+                        errorRateColor(feedback24h?.errorRate),
+                      ]}
+                    >
+                      {feedback24h ? `${feedback24h.errorRate.toFixed(1)}%` : '-'}
+                    </td>
+                    <td
+                      class:list={[
+                        'px-4 py-3 text-right font-mono',
+                        errorRateColor(feedback7d?.errorRate),
+                      ]}
+                    >
+                      {feedback7d ? `${feedback7d.errorRate.toFixed(1)}%` : '-'}
+                    </td>
+                    <td
+                      class:list={[
+                        'px-4 py-3 text-right font-mono',
+                        errorRateColor(feedback30d?.errorRate),
+                      ]}
+                    >
+                      {feedback30d ? `${feedback30d.errorRate.toFixed(1)}%` : '-'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
+    </section>
+
+    <!-- Similar Models -->
+    {
+      similarModels.length > 0 && (
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-3">Similar Models</h2>
+          <div class="rounded-xl border bg-card divide-y overflow-hidden">
+            {similarModels.map((similar) => {
+              const simProvider = getProviderFromId(similar.id);
+              return (
+                <a
+                  href={modelDetailPath(similar.id)}
+                  class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <img
+                    src={`https://models.dev/logos/${simProvider}.svg`}
+                    alt={simProvider}
+                    class="h-5 w-5 object-contain opacity-70 dark:invert dark:opacity-80 shrink-0"
+                    onerror="this.style.display='none'"
+                  />
+                  <span class="font-medium text-foreground truncate">{similar.name}</span>
+                  {similar.contextLength && (
+                    <span class="ml-auto text-xs text-muted-foreground font-mono shrink-0">
+                      {formatTokens(similar.contextLength)}
+                    </span>
+                  )}
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- More from Provider -->
+    {
+      relatedModels.length > 0 && (
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-3">
+            More from{' '}
+            <a href={providerDetailPath(provider)} class="hover:text-primary transition-colors">
+              {providerCapitalized}
+            </a>
+          </h2>
+          <div class="rounded-xl border bg-card divide-y overflow-hidden">
+            {relatedModels.map((related) => {
+              const relProvider = getProviderFromId(related.id);
+              return (
+                <a
+                  href={modelDetailPath(related.id)}
+                  class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <img
+                    src={`https://models.dev/logos/${relProvider}.svg`}
+                    alt={relProvider}
+                    class="h-5 w-5 object-contain opacity-70 dark:invert dark:opacity-80 shrink-0"
+                    onerror="this.style.display='none'"
+                  />
+                  <span class="font-medium text-foreground truncate">{related.name}</span>
+                  {related.contextLength && (
+                    <span class="ml-auto text-xs text-muted-foreground font-mono shrink-0">
+                      {formatTokens(related.contextLength)}
+                    </span>
+                  )}
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- FAQ -->
+    {
+      faqs.length > 0 && (
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-3">Frequently Asked Questions</h2>
+          <div class="rounded-xl border bg-card divide-y overflow-hidden">
+            {faqs.map((faq) => (
+              <details class="group px-4 py-3">
+                <summary class="text-sm font-medium cursor-pointer text-foreground hover:text-primary transition-colors list-none flex items-center justify-between">
+                  {faq.question}
+                  <svg
+                    class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </summary>
+                <p class="text-sm text-muted-foreground mt-2 leading-relaxed">{faq.answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    <DataAttributionFooter class="pt-8" />
+  </div>
+</Layout>

@@ -1,0 +1,8 @@
+[allowlist]
+description = "Ignore known false positives in documentation examples."
+paths = [
+  '''README\.md''',
+]
+regexes = [
+  '''BUNDLE_ENTERPRISE__CONTRIBSYS__COM''',
+]

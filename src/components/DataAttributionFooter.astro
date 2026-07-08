@@ -1,0 +1,14 @@
+---
+interface Props {
+  class?: string;
+}
+
+const { class: className = '' } = Astro.props;
+---
+
+<footer class={`text-center text-sm text-muted-foreground ${className}`}>
+  <p>
+    We are not <a href="https://openrouter.ai" class="underline hover:text-foreground">OpenRouter</a
+    >. Data is from community reports.
+  </p>
+</footer>

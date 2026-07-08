@@ -1,0 +1,103 @@
+---
+import { GetStartedSectionWithProvider } from './GetStartedSection';
+import { ParameterConfigurationSectionWithProvider } from './ParameterConfigurationSection';
+import { CodeExamplesSection } from './CodeExamplesSection';
+import { ApiReferenceSection } from './ApiReferenceSection';
+import { QueryParamsSection } from './QueryParamsSection';
+import DataAttributionFooter from '../DataAttributionFooter.astro';
+import { DocsSidebar } from '../DocsSidebar';
+
+interface Props {
+  initialSection?: string;
+}
+
+const { initialSection = '' } = Astro.props;
+---
+
+<script is:inline define:vars={{ initialSection }}>
+  (() => {
+    const normalizeSection = (value) => {
+      if (!value) return '';
+      try {
+        return decodeURIComponent(value).trim();
+      } catch {
+        return String(value).trim();
+      }
+    };
+
+    const url = new URL(window.location.href);
+    const sectionFromHash = normalizeSection(url.hash ? url.hash.slice(1) : '');
+    const sectionFromQuery = normalizeSection(url.searchParams.get('section'));
+    const sectionFromPath = normalizeSection(initialSection);
+    const targetId = sectionFromHash || sectionFromQuery || sectionFromPath;
+    if (!targetId) return;
+
+    // Keep the address bar hash in sync so refresh/back preserve the anchor target.
+    if (!sectionFromHash || sectionFromHash !== targetId) {
+      url.hash = encodeURIComponent(targetId);
+      history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    let cancelled = false;
+    let rafId = 0;
+    const timerIds = [];
+    const interactionEvents = ['wheel', 'touchstart', 'mousedown', 'keydown'];
+    const interactionListenerOptions = { passive: true };
+
+    const scrollToTarget = () => {
+      if (cancelled) return;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ block: 'start', behavior: 'auto' });
+    };
+
+    const requestScroll = () => {
+      if (cancelled || rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        scrollToTarget();
+      });
+    };
+
+    let observer = null;
+
+    const cleanup = () => {
+      cancelled = true;
+      observer?.disconnect();
+      if (rafId) window.cancelAnimationFrame(rafId);
+      timerIds.forEach((id) => window.clearTimeout(id));
+      interactionEvents.forEach((eventName) =>
+        window.removeEventListener(eventName, onUserInteraction, interactionListenerOptions)
+      );
+    };
+
+    const onUserInteraction = () => cleanup();
+
+    interactionEvents.forEach((eventName) =>
+      window.addEventListener(eventName, onUserInteraction, interactionListenerOptions)
+    );
+
+    observer = new MutationObserver(() => requestScroll());
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    [0, 120, 300, 600, 1000, 1600, 2500, 4000, 5500].forEach((delayMs) => {
+      timerIds.push(window.setTimeout(requestScroll, delayMs));
+    });
+
+    // Stop auto-adjusting after initial page settle.
+    timerIds.push(window.setTimeout(cleanup, 6000));
+  })();
+</script>
+
+<!-- DocsSidebar includes its own SiteHeader so the mobile hamburger can toggle the sidebar -->
+<DocsSidebar client:load>
+  <div class="container mx-auto max-w-5xl px-4 pt-14 pb-12 space-y-20">
+    <GetStartedSectionWithProvider client:load />
+    <ParameterConfigurationSectionWithProvider client:load />
+    <CodeExamplesSection client:load />
+    <ApiReferenceSection client:load />
+    <QueryParamsSection client:load />
+
+    <DataAttributionFooter class="border-t pt-12" />
+  </div>
+</DocsSidebar>

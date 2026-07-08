@@ -1,0 +1,58 @@
+---
+import Layout from '../layouts/base.astro';
+import { access } from '@/lib/runtime-access';
+import { getDistinctProviders } from '@/services/openrouter';
+import { providerDetailPath } from '@/lib/model-urls';
+
+const db = access(Astro.locals).db('app');
+if (!db) throw new Error('Missing env: DATABASE_URL');
+
+const providers = await getDistinctProviders(db);
+---
+
+<Layout
+  title="Providers"
+  description="Browse free OpenRouter model providers and view provider-level reliability and availability."
+  url="/providers"
+>
+  <div class="container mx-auto max-w-3xl px-4 py-8">
+    <h1 class="text-3xl font-bold tracking-tight text-foreground mb-2">Providers</h1>
+    <p class="text-sm text-muted-foreground mb-6">
+      Explore provider-specific pages for health, error rate, and model availability.
+    </p>
+
+    <div class="rounded-xl border bg-card divide-y overflow-hidden">
+      {
+        providers.map((provider) => (
+          <a
+            href={providerDetailPath(provider)}
+            class="group flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <img
+                src={`https://models.dev/logos/${provider}.svg`}
+                alt={provider}
+                class="h-6 w-6 object-contain opacity-70 dark:invert dark:opacity-80 shrink-0"
+                onerror="this.style.display='none'"
+              />
+              <span class="font-medium text-foreground group-hover:text-primary transition-colors capitalize truncate">
+                {provider}
+              </span>
+            </div>
+            <svg
+              class="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Layout>

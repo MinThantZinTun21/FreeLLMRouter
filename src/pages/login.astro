@@ -1,0 +1,14 @@
+---
+import Layout from '../layouts/base.astro';
+import { LoginPage } from '../components/auth/LoginPage';
+---
+
+<Layout
+  title="Sign In - Free LLM Router"
+  description="Sign in with GitHub to get your API key"
+  noindex={true}
+>
+  <div class="container mx-auto max-w-md px-4 py-16">
+    <LoginPage client:load />
+  </div>
+</Layout>

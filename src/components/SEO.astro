@@ -1,0 +1,56 @@
+---
+import { siteConfig, type SEOProps } from '../lib/seo';
+
+interface Props extends SEOProps {}
+
+const {
+  title = siteConfig.name,
+  description = siteConfig.description,
+  image = siteConfig.defaultImage,
+  url = Astro.url.href,
+  type = 'website',
+  noindex = false,
+  jsonLd,
+} = Astro.props;
+
+const titleHasBrand = title.toLowerCase().includes(siteConfig.name.toLowerCase());
+const fullTitle = titleHasBrand ? title : `${title} | ${siteConfig.name}`;
+
+const canonical = new URL(url, siteConfig.url);
+canonical.search = '';
+canonical.hash = '';
+const canonicalUrl = canonical.href;
+const imageUrl = image.startsWith('http') ? image : new URL(image, siteConfig.url).href;
+
+const jsonLdScripts = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+---
+
+<!-- Primary Meta Tags -->
+<title>{fullTitle}</title>
+<meta name="title" content={fullTitle} />
+<meta name="description" content={description} />
+<link rel="canonical" href={canonicalUrl} />
+
+{noindex && <meta name="robots" content="noindex, nofollow" />}
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content={type} />
+<meta property="og:url" content={canonicalUrl} />
+<meta property="og:title" content={fullTitle} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content={imageUrl} />
+<meta property="og:site_name" content={siteConfig.name} />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content={canonicalUrl} />
+<meta name="twitter:title" content={fullTitle} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={imageUrl} />
+
+<!-- JSON-LD Structured Data -->
+{
+  jsonLdScripts.map((schema) => (
+    <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+  ))
+}

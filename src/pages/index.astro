@@ -1,0 +1,24 @@
+---
+import Layout from '../layouts/base.astro';
+import { ModelHeroWithProvider } from '../components/ModelHero';
+import { UsageBanner } from '../components/UsageBanner';
+import DataAttributionFooter from '../components/DataAttributionFooter.astro';
+import { generateOrganizationSchema, generateWebSiteSchema } from '../lib/seo';
+---
+
+<Layout
+  title="Free OpenRouter Models That Stay Up"
+  description="Find free OpenRouter models with live health and availability. One API call routes to working free models so your app stays up."
+  jsonLd={[generateOrganizationSchema(), generateWebSiteSchema()]}
+>
+  <!-- Usage Banner -->
+  <div class="max-w-5xl mx-auto fixed bottom-4 left-0 right-0 z-40 px-4 py-2">
+    <UsageBanner client:load />
+  </div>
+
+  <div class="container mx-auto max-w-5xl px-4 py-16">
+    <ModelHeroWithProvider client:load />
+
+    <DataAttributionFooter class="mt-16 pt-8" />
+  </div>
+</Layout>

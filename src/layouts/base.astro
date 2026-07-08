@@ -1,0 +1,60 @@
+---
+import '../styles/global.css';
+import { SiteHeader } from '../components/SiteHeader';
+import { Toaster } from '../components/ui/sonner';
+import SEO from '../components/SEO.astro';
+import PostHog from '../components/posthog.astro';
+import GoogleAnalytics from '../components/google-analytics.astro';
+import type { SEOProps } from '../lib/seo';
+
+interface Props extends SEOProps {
+  /** Set to false if the page renders its own header (e.g., docs page with sidebar) */
+  showHeader?: boolean;
+}
+
+const { showHeader = true, ...seoProps } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <SEO {...seoProps} />
+    <PostHog />
+    <GoogleAnalytics />
+    {
+      import.meta.env.PUBLIC_TURNSTILE_SITE_KEY && (
+        <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+      )
+    }
+    <script is:inline>
+      (function () {
+        const theme = localStorage.getItem('theme');
+        const isDark =
+          theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) document.documentElement.classList.add('dark');
+      })();
+    </script>
+  </head>
+  <!--
+    No React provider wraps <slot /> here because Astro islands don't share context.
+    Each `client:load` component is a separate React app. Components needing React Query
+    use the `WithProvider` suffix pattern and include their own QueryProvider.
+    Toaster works globally via DOM events, no context needed.
+  -->
+  <body class="min-h-screen bg-background text-foreground">
+    {showHeader && <SiteHeader client:load showSidebarTrigger={false} />}
+    <main class={showHeader ? 'pt-14' : ''}>
+      <slot />
+    </main>
+    <Toaster client:load />
+  </body>
+</html>

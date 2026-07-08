@@ -1,0 +1,37 @@
+name = "free-llm-router-sync"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Cron trigger - runs every hour at minute 0
+[triggers]
+crons = ["0 * * * *"]
+
+# Observability - enable real-time logs
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+
+# Staging environment
+[env.staging]
+name = "free-llm-router-sync-staging"
+# Secrets:
+# - ACTIVE_DB_SLOT (optional, defaults to 1)
+# - DATABASE_URL_ADMIN (slot 1)
+# - DATABASE_URL_ADMIN_<N> (slot N)
+
+# Production environment
+[env.production]
+name = "free-llm-router-sync-production"
+# Secrets:
+# - ACTIVE_DB_SLOT (optional, defaults to 1)
+# - DATABASE_URL_ADMIN (slot 1)
+# - DATABASE_URL_ADMIN_<N> (slot N)

@@ -1,0 +1,26 @@
+---
+const runtimeEnv = Astro?.locals?.runtime?.env as Record<string, string | undefined> | undefined;
+const gaMeasurementId =
+  import.meta.env.PUBLIC_GA_MEASUREMENT_ID ??
+  runtimeEnv?.PUBLIC_GA_MEASUREMENT_ID ??
+  runtimeEnv?.GA_MEASUREMENT_ID;
+const gaBootstrapScript = gaMeasurementId
+  ? `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${gaMeasurementId}');
+`
+  : '';
+---
+
+{
+  gaMeasurementId && (
+    <script
+      is:inline
+      async
+      src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+    />
+  )
+}
+{gaMeasurementId && <script is:inline set:html={gaBootstrapScript} />}
