@@ -43,6 +43,7 @@ export function createAuth(env: AuthEnv): BetterAuthInstance<AuthOptions> {
   const auth = betterAuth({
     baseURL: env.baseUrl,
     secret: env.secret,
+    trustedOrigins: [env.baseUrl],
     database: drizzleAdapter(db, {
       provider: 'pg',
       usePlural: true,

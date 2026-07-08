@@ -37,17 +37,23 @@ function hasRuntimeEnv(locals: LocalsLike | undefined): boolean {
   return Boolean(locals?.runtime?.env);
 }
 
+function readProcessEnv(key: string): string | undefined {
+  if (typeof process === 'undefined') return undefined;
+  return process.env[key];
+}
+
 function readEnv(locals: LocalsLike | undefined, key: string): string | undefined {
   const runtimeValue = locals?.runtime?.env?.[key];
+  const processValue = readProcessEnv(key);
 
   // DB and slot config must come from a single env source.
   // In Cloudflare/runtime contexts, do not silently fall back to build-time import.meta.env,
   // or we can mix ACTIVE_DB_SLOT from runtime with DATABASE_URL values baked at build time.
   if (isDbOrSlotKey(key) && hasRuntimeEnv(locals)) {
-    return runtimeValue;
+    return runtimeValue ?? processValue;
   }
 
-  return runtimeValue || importMetaEnv?.[key];
+  return runtimeValue || importMetaEnv?.[key] || processValue;
 }
 
 export interface RuntimeAccess {
