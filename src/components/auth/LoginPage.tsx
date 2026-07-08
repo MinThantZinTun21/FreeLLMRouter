@@ -1,8 +1,16 @@
-import { useCachedSession } from '@/lib/auth-client';
+import { signIn, useCachedSession } from '@/lib/auth-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export function LoginPage() {
   const { data: session, isPending } = useCachedSession();
+
+  const handleGithubSignIn = async () => {
+    await signIn.social({
+      provider: 'github',
+      callbackURL: '/dashboard',
+    });
+  };
 
   // If already logged in, redirect to dashboard
   if (!isPending && session?.user) {
@@ -22,11 +30,16 @@ export function LoginPage() {
     <Card className="w-full">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Sign In</CardTitle>
-        <CardDescription>GitHub sign-in has been removed for this deployment.</CardDescription>
+        <CardDescription>
+          Continue with GitHub to access your dashboard and API keys.
+        </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <Button className="w-full" onClick={handleGithubSignIn} disabled={isPending}>
+          Sign in with GitHub
+        </Button>
         <p className="text-center text-sm text-muted-foreground">
-          Configure your own auth provider or use API-key based workflows for integrations.
+          After sign-in, you will be redirected to your dashboard.
         </p>
       </CardContent>
     </Card>

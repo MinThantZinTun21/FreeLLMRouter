@@ -1,0 +1,173 @@
+---
+import Layout from '../layouts/base.astro';
+---
+
+<Layout
+  title="Chat Test"
+  description="Test FreeLLMRouter chat API with your API key and see which model responded."
+>
+  <main class="container mx-auto max-w-3xl px-4 py-10">
+    <h1 class="text-3xl font-semibold tracking-tight">Chat Test</h1>
+    <p class="mt-2 text-sm text-muted-foreground">
+      Enter your API key, send a message, and this page will show and log which model returned the
+      response.
+    </p>
+
+    <form id="chat-form" class="mt-8 space-y-4 rounded-lg border p-4">
+      <div class="space-y-2">
+        <label for="apiKey" class="text-sm font-medium">API Key</label>
+        <input
+          id="apiKey"
+          name="apiKey"
+          type="password"
+          autocomplete="off"
+          placeholder="fbr_..."
+          class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          required
+        />
+      </div>
+
+      <div class="space-y-2">
+        <label for="message" class="text-sm font-medium">Message</label>
+        <textarea
+          id="message"
+          name="message"
+          rows="4"
+          placeholder="Write your test prompt here..."
+          class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          required></textarea>
+      </div>
+
+      <button
+        id="submitBtn"
+        type="submit"
+        class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+      >
+        Send
+      </button>
+    </form>
+
+    <section class="mt-6 space-y-4">
+      <div class="rounded-lg border p-4">
+        <h2 class="text-sm font-semibold">Response Model</h2>
+        <p id="modelUsed" class="mt-2 text-sm text-muted-foreground">No response yet.</p>
+      </div>
+
+      <div class="rounded-lg border p-4">
+        <h2 class="text-sm font-semibold">Assistant Reply</h2>
+        <pre id="assistantReply" class="mt-2 whitespace-pre-wrap text-sm text-foreground"></pre>
+      </div>
+
+      <div class="rounded-lg border p-4">
+        <h2 class="text-sm font-semibold">Raw JSON</h2>
+        <pre
+          id="rawJson"
+          class="mt-2 max-h-[24rem] overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+        </pre>
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<script>
+  const form = document.getElementById('chat-form');
+  const modelUsed = document.getElementById('modelUsed');
+  const assistantReply = document.getElementById('assistantReply');
+  const rawJson = document.getElementById('rawJson');
+  const submitBtn = document.getElementById('submitBtn');
+  const apiKeyInput = document.getElementById('apiKey');
+  const messageInput = document.getElementById('message');
+
+  function safeText(value) {
+    return typeof value === 'string' ? value : '';
+  }
+
+  function extractText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (part && typeof part === 'object' && typeof part.text === 'string') return part.text;
+          return '';
+        })
+        .join('\n')
+        .trim();
+    }
+    return '';
+  }
+
+  function extractModelName(data) {
+    if (!data || typeof data !== 'object') return 'Unknown model';
+
+    if (typeof data.model === 'string' && data.model.trim()) {
+      return data.model;
+    }
+
+    const bridge = data._bridge;
+    if (bridge && Array.isArray(bridge.attempts) && bridge.attempts.length > 0) {
+      const successful = bridge.attempts.find((attempt) => attempt && attempt.success);
+      if (successful && typeof successful.modelId === 'string') {
+        return successful.modelId;
+      }
+      const lastAttempt = bridge.attempts[bridge.attempts.length - 1];
+      if (lastAttempt && typeof lastAttempt.modelId === 'string') {
+        return lastAttempt.modelId;
+      }
+    }
+
+    return 'Unknown model';
+  }
+
+  async function sendMessage(event) {
+    event.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    modelUsed.textContent = 'Waiting for response...';
+    assistantReply.textContent = '';
+    rawJson.textContent = '';
+
+    try {
+      const apiKey = safeText(apiKeyInput.value).trim();
+      const message = safeText(messageInput.value).trim();
+
+      const res = await fetch('/api/bridge/v1/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'x-bridge-debug': '1',
+        },
+        body: JSON.stringify({
+          stream: false,
+          messages: [{ role: 'user', content: message }],
+        }),
+      });
+
+      const data = await res.json();
+      const model = extractModelName(data);
+      const reply = extractText(data?.choices?.[0]?.message?.content) || '(Empty reply)';
+
+      modelUsed.textContent = model;
+      assistantReply.textContent = reply;
+      rawJson.textContent = JSON.stringify(data, null, 2);
+
+      console.log('[Chat Test] Model used:', model);
+      console.log('[Chat Test] Full response:', data);
+
+      if (!res.ok) {
+        console.error('[Chat Test] Request failed:', res.status, data);
+      }
+    } catch (error) {
+      modelUsed.textContent = 'Request failed';
+      assistantReply.textContent = error instanceof Error ? error.message : String(error);
+      rawJson.textContent = '';
+      console.error('[Chat Test] Error:', error);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send';
+    }
+  }
+
+  form?.addEventListener('submit', sendMessage);
+</script>

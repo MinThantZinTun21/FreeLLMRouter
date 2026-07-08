@@ -7,6 +7,7 @@ import { UserInfo } from './UserInfoCard';
 import { ApiKeysTab } from './ApiKeysTab';
 import { ApiKeyConfigurationTab } from './ApiKeyConfigurationTab';
 import { HistoryTab } from './HistoryTab';
+import { BridgeAdminTab } from './BridgeAdminTab';
 
 export function DashboardPage() {
   return (
@@ -20,7 +21,7 @@ function getInitialTab(): string {
   if (typeof window === 'undefined') return 'history';
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab') || 'history';
-  return ['history', 'api', 'configure'].includes(tab) ? tab : 'history';
+  return ['history', 'api', 'configure', 'bridge'].includes(tab) ? tab : 'history';
 }
 
 function DashboardPageContent() {
@@ -108,6 +109,7 @@ function DashboardPageContent() {
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="api">API Keys</TabsTrigger>
           <TabsTrigger value="configure">Configure Parameters</TabsTrigger>
+          <TabsTrigger value="bridge">Bridge Admin</TabsTrigger>
         </TabsList>
 
         <TabsContent value="history" className="mt-6">
@@ -120,6 +122,10 @@ function DashboardPageContent() {
 
         <TabsContent value="configure" className="mt-6">
           <ApiKeyConfigurationTab />
+        </TabsContent>
+
+        <TabsContent value="bridge" className="mt-6">
+          <BridgeAdminTab />
         </TabsContent>
       </Tabs>
     </div>

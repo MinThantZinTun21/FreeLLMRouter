@@ -51,6 +51,8 @@ export const ALL: APIRoute = async ({ request, locals }) => {
     databaseUrlAdmin,
     baseUrl,
     secret,
+    githubClientId: rt.env('GITHUB_CLIENT_ID') || undefined,
+    githubClientSecret: rt.env('GITHUB_CLIENT_SECRET') || undefined,
   };
 
   try {

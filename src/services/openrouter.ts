@@ -189,6 +189,15 @@ export async function syncModels(db: Database): Promise<SyncResult> {
       console.error('[OpenRouterSync] Snapshot write failed:', snapshotError);
     }
 
+    try {
+      const { seedBridgeProviders } = await import('@/bridge/provider-seed');
+      const { syncBridgeCatalogFromFreeModels } = await import('@/bridge/catalog');
+      await seedBridgeProviders();
+      await syncBridgeCatalogFromFreeModels();
+    } catch (bridgeCatalogError) {
+      console.error('[OpenRouterSync] Bridge catalog sync failed:', bridgeCatalogError);
+    }
+
     return result;
   } catch (error) {
     console.error('[OpenRouterSync] Sync failed:', error);

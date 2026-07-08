@@ -18,6 +18,8 @@ export interface AuthEnv {
   databaseUrlAdmin?: string; // For Better Auth operations (bypasses RLS)
   baseUrl: string;
   secret: string;
+  githubClientId?: string;
+  githubClientSecret?: string;
 }
 
 // Cache auth instance to avoid recreation on every request
@@ -57,6 +59,15 @@ export function createAuth(env: AuthEnv): BetterAuthInstance<AuthOptions> {
         },
       }),
     ],
+    socialProviders:
+      env.githubClientId && env.githubClientSecret
+        ? {
+            github: {
+              clientId: env.githubClientId,
+              clientSecret: env.githubClientSecret,
+            },
+          }
+        : undefined,
   });
 
   authCache.set(cacheKey, auth);
